@@ -1,0 +1,16 @@
+{
+  "model_name": "wine_quality_model",
+  "model_version": "1",
+  "run_id": "9886b8b18f224d149ad910f01bfe1c9b",
+  "stage": "Production",
+  "feature_count": 13,
+  "train_rows": 142,
+  "test_rows": 36,
+  "test_metrics": {
+    "accuracy": 1.0,
+    "f1_score": 1.0,
+    "precision": 1.0,
+    "recall": 1.0
+  },
+  "registry_predictions_match": true
+}

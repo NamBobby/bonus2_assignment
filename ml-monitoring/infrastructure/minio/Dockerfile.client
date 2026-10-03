@@ -1,0 +1,9 @@
+FROM golang:1.25-bookworm AS builder
+ENV CGO_ENABLED=0 GOBIN=/out
+RUN go install github.com/minio/mc@RELEASE.2025-08-13T08-35-41Z
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /out/mc /usr/bin/mc
+ENTRYPOINT ["/usr/bin/mc"]

@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: coursework
+
+rule_files:
+  - /etc/prometheus/evidently_alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: model-api
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['api:8000']
+
+  - job_name: evidently
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['evidently:8001']

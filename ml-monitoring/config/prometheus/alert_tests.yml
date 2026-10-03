@@ -1,0 +1,53 @@
+rule_files:
+  - evidently_alerts.yml
+evaluation_interval: 1m
+
+tests:
+  - name: API outage fires after the hold period
+    interval: 1m
+    input_series:
+      - series: 'up{job="model-api"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: ModelApiDown
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: ModelApiDown
+        exp_alerts:
+          - exp_labels:
+              job: model-api
+              severity: critical
+            exp_annotations:
+              summary: Model API is unavailable
+              description: Check API logs, model registry connectivity and container health.
+
+  - name: Normal traffic does not fire drift alert
+    interval: 1m
+    input_series:
+      - series: 'evidently_data_drift_detected{job="evidently"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: InputDriftDetected
+        exp_alerts: []
+
+  - name: Persistent detected drift fires after two minutes
+    interval: 1m
+    input_series:
+      - series: 'evidently_data_drift_detected{job="evidently"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: InputDriftDetected
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: InputDriftDetected
+        exp_alerts:
+          - exp_labels:
+              job: evidently
+              severity: warning
+              signal: leading
+            exp_annotations:
+              summary: Wine input distribution has drifted
+              description: Inspect evidently_feature_drift and the HTML report; drift alone does not prove accuracy loss.

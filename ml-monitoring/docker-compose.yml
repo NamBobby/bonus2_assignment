@@ -1,0 +1,312 @@
+name: ddm501-bonus2-ml-monitoring
+
+services:
+  # ==========================================
+  # DATABASE
+  # ==========================================
+  postgres:
+    image: postgres:13
+    container_name: bonus2_monitoring-postgres
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "25432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monitoring
+
+  # ==========================================
+  # MINIO - S3 Compatible Object Storage
+  # ==========================================
+  minio:
+    image: ddm501-bonus2-minio:2025-10-15
+    build:
+      context: ./infrastructure/minio
+      dockerfile: Dockerfile.server
+    container_name: bonus2_monitoring-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minio
+      - MINIO_ROOT_PASSWORD=minio123
+    volumes:
+      - minio_data:/data
+    ports:
+      - "29000:9000"
+      - "29001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+
+  # ==========================================
+  # MINIO INITIALIZATION
+  # ==========================================
+  minio-init:
+    image: ddm501-bonus2-mc:2025-08-13
+    build:
+      context: ./infrastructure/minio
+      dockerfile: Dockerfile.client
+    container_name: bonus2_monitoring-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      set -e; echo 'Waiting for MinIO to be ready...';
+      sleep 5;
+      /usr/bin/mc alias set myminio http://minio:9000 minio minio123;
+      /usr/bin/mc mb myminio/mlflow-artifacts --ignore-existing;
+      /usr/bin/mc anonymous set download myminio/mlflow-artifacts;
+      echo 'MinIO bucket mlflow-artifacts is ready!';
+      exit 0;
+      "
+    networks:
+      - monitoring
+
+  # ==========================================
+  # MLFLOW
+  # ==========================================
+  mlflow:
+    build:
+      context: ./mlflow
+      dockerfile: Dockerfile
+    container_name: bonus2_monitoring-mlflow
+    # command: >
+    #   bash -c "
+    #     mlflow server \
+    #       --backend-store-uri postgresql://mlflow:mlflow@postgres:5432/mlflow \
+    #       --default-artifact-root s3://mlflow/artifacts \
+    #       --host 0.0.0.0 \
+    #       --port 5000 \
+    #       --gunicorn-opts '--workers 4 --timeout 300'
+    #   "
+    environment:
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - MLFLOW_S3_IGNORE_TLS=true
+    volumes:
+      - mlflow_data:/mlflow
+    ports:
+      - "25000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; print(urllib.request.urlopen(\"http://0.0.0.0:5000/health\").getcode())'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - monitoring
+
+  # ==========================================
+  # FASTAPI MODEL SERVING
+  # ==========================================
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: bonus2_monitoring-api
+    ports:
+      - "28000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - MODEL_NAME=wine_quality_model
+      - MODEL_STAGE=Production
+      - AWS_ACCESS_KEY_ID=minio
+      - AWS_SECRET_ACCESS_KEY=minio123
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+      - MLFLOW_S3_IGNORE_TLS=true
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ==========================================
+  # PROMETHEUS
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: bonus2_monitoring-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/evidently_alerts.yml:/etc/prometheus/evidently_alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "29090:9090"
+    depends_on:
+      - api
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ==========================================
+  # GRAFANA
+  # ==========================================
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: bonus2_monitoring-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:23000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "23000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ==========================================
+  # EVIDENTLY AI - DRIFT DETECTION
+  # ==========================================
+  evidently:
+    build:
+      context: ./evidently
+      dockerfile: Dockerfile
+    container_name: bonus2_monitoring-evidently
+    ports:
+      - "28001:8001"
+    volumes:
+      - evidently_data:/app/data
+      - evidently_reports:/app/reports
+      - evidently_reference:/app/reference
+    environment:
+      - EVIDENTLY_REFERENCE_WINDOW=7d
+      - EVIDENTLY_ANALYSIS_INTERVAL=1h
+      - EVIDENTLY_DRIFT_THRESHOLD=0.1
+      - EVIDENTLY_MIN_SAMPLES=100
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # ==========================================
+  # AIRFLOW (OPTIONAL)
+  # ==========================================
+  # Uncomment if you want Airflow monitoring
+
+  # airflow-webserver:
+  #   image: apache/airflow:2.10.2
+  #   container_name: monitoring-airflow-webserver
+  #   environment:
+  #     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+  #     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+  #     AIRFLOW__METRICS__STATSD_ON: 'true'
+  #     AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+  #     AIRFLOW__METRICS__STATSD_PORT: 9125
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - monitoring
+  #   command: webserver
+
+  # airflow-scheduler:
+  #   image: apache/airflow:2.10.2
+  #   container_name: monitoring-airflow-scheduler
+  #   environment:
+  #     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  #     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+  #     AIRFLOW__METRICS__STATSD_ON: 'true'
+  #     AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+  #     AIRFLOW__METRICS__STATSD_PORT: 9125
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - monitoring
+  #   command: scheduler
+
+  # statsd-exporter:
+  #   image: prom/statsd-exporter:latest
+  #   container_name: monitoring-statsd
+  #   command:
+  #     - '--statsd.mapping-config=/tmp/statsd_mapping.yml'
+  #   ports:
+  #     - "9102:9102"
+  #     - "9125:9125/udp"
+  #   volumes:
+  #     - ./config/statsd_mapping.yml:/tmp/statsd_mapping.yml:ro
+  #   networks:
+  #     - monitoring
+
+# ==========================================
+# VOLUMES
+# ==========================================
+volumes:
+  postgres_data:
+    driver: local
+    name: bonus2_monitoring-postgres_data
+  minio_data:
+    driver: local
+    name: bonus2_monitoring-minio_data
+  mlflow_data:
+    driver: local
+    name: bonus2_monitoring-mlflow_data
+  prometheus_data:
+    driver: local
+    name: bonus2_monitoring-prometheus_data
+  grafana_data:
+    driver: local
+    name: bonus2_monitoring-grafana_data
+  evidently_data:
+    driver: local
+    name: bonus2_monitoring-evidently_data
+  evidently_reports:
+    driver: local
+    name: bonus2_monitoring-evidently_reports
+  evidently_reference:
+    driver: local
+    name: bonus2_monitoring-evidently_reference
+
+networks:
+  monitoring:
+    driver: bridge

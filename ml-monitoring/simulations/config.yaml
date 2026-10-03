@@ -1,0 +1,92 @@
+{
+  "seed": 501,
+  "api": {
+    "base_url": "http://localhost:28000",
+    "evidently_base_url": "http://localhost:28001",
+    "prediction_url": "http://localhost:28000/predict",
+    "health_url": "http://localhost:28000/health",
+    "evidently_capture_url": "http://localhost:28001/capture",
+    "evidently_analyze_url": "http://localhost:28001/analyze"
+  },
+  "model": {
+    "name": "wine_quality_model",
+    "version": "1",
+    "feature_count": 13
+  },
+  "features": {
+    "alcohol": {
+      "mean": 12.971478873239436,
+      "std": 0.7996900343021105
+    },
+    "malic_acid": {
+      "mean": 2.3400000000000003,
+      "std": 1.0974002569453236
+    },
+    "ash": {
+      "mean": 2.364859154929577,
+      "std": 0.2674336456217757
+    },
+    "alcalinity_of_ash": {
+      "mean": 19.625352112676055,
+      "std": 3.3689225221906938
+    },
+    "magnesium": {
+      "mean": 99.63380281690141,
+      "std": 14.884758663416788
+    },
+    "total_phenols": {
+      "mean": 2.2737323943661973,
+      "std": 0.6192619518482815
+    },
+    "flavanoids": {
+      "mean": 1.985352112676056,
+      "std": 0.948593964675867
+    },
+    "nonflavanoid_phenols": {
+      "mean": 0.36014084507042265,
+      "std": 0.11879077307728884
+    },
+    "proanthocyanins": {
+      "mean": 1.600211267605634,
+      "std": 0.577731684286028
+    },
+    "color_intensity": {
+      "mean": 4.989647880281689,
+      "std": 2.3267108994616597
+    },
+    "hue": {
+      "mean": 0.948985915492958,
+      "std": 0.2258472307393044
+    },
+    "od280/od315_of_diluted_wines": {
+      "mean": 2.606197183098591,
+      "std": 0.6872170171965035
+    },
+    "proline": {
+      "mean": 739.4788732394367,
+      "std": 300.43552232515174
+    }
+  },
+  "scenarios": {
+    "normal": {
+      "affected_features": 0,
+      "shift_std": 0.0
+    },
+    "slight_drift": {
+      "affected_features": 2,
+      "shift_std": 0.5
+    },
+    "moderate_drift": {
+      "affected_features": 4,
+      "shift_std": 1.5
+    },
+    "severe_drift": {
+      "affected_features": 6,
+      "shift_std": 3.0
+    },
+    "sudden_shift": {
+      "affected_features": 13,
+      "shift_std": 3.0
+    }
+  }
+}

@@ -1,0 +1,70 @@
+groups:
+  - name: service_health
+    rules:
+      - alert: ModelApiDown
+        expr: up{job="model-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Model API is unavailable
+          description: Check API logs, model registry connectivity and container health.
+
+      - alert: EvidentlyDown
+        expr: up{job="evidently"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Drift monitoring service is unavailable
+          description: Check Evidently logs and restore the monitoring service.
+
+      - alert: HighApiErrorRate
+        expr: |
+          sum(rate(api_requests_total{job="model-api",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(api_requests_total{job="model-api"}[5m])), 0.001)
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: API server error share exceeds five percent
+          description: Inspect prediction errors and API logs before retrying or reloading the model.
+
+      - alert: SlowPredictions
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(model_prediction_latency_seconds_bucket{job="model-api"}[5m])
+            )
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Prediction p95 exceeds 100 milliseconds
+          description: Check request load, container resources and model inference duration.
+
+  - name: input_drift
+    rules:
+      - alert: InputDriftDetected
+        expr: evidently_data_drift_detected{job="evidently"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          signal: leading
+        annotations:
+          summary: Wine input distribution has drifted
+          description: Inspect evidently_feature_drift and the HTML report; drift alone does not prove accuracy loss.
+
+      - alert: WidespreadInputDrift
+        expr: evidently_drift_score{job="evidently"} >= 0.75
+        for: 5m
+        labels:
+          severity: critical
+          signal: leading
+        annotations:
+          summary: At least seventy-five percent of features have drifted
+          description: Check upstream schema and data sources before considering retraining.

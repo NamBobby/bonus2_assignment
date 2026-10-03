@@ -1,0 +1,50 @@
+{
+  "scenario": "severe_drift",
+  "seed": 501,
+  "successful_requests": 400,
+  "captured_requests": 400,
+  "elapsed_seconds": 20.048,
+  "prediction_counts": {
+    "2": 119,
+    "1": 156,
+    "0": 125
+  },
+  "model_version": "1",
+  "analysis": {
+    "status": "success",
+    "timestamp": "2026-10-03T03:42:46.853972",
+    "drift_detected": true,
+    "drift_score": 0.46153846153846156,
+    "score_definition": "share_of_drifted_features",
+    "threshold": 0.3,
+    "drifted_features": [
+      "alcohol",
+      "malic_acid",
+      "ash",
+      "alcalinity_of_ash",
+      "magnesium",
+      "total_phenols"
+    ],
+    "drift_scores": {
+      "alcohol": 1.0972606574652586e-80,
+      "malic_acid": 1.5160062431636e-99,
+      "ash": 4.1133399825213514e-94,
+      "alcalinity_of_ash": 8.727383103456597e-93,
+      "magnesium": 5.4590207383386596e-98,
+      "total_phenols": 1.8196895449367033e-96,
+      "flavanoids": 0.9505403574824428,
+      "nonflavanoid_phenols": 0.9855008975604901,
+      "proanthocyanins": 0.6878182637095347,
+      "color_intensity": 0.8733311148575424,
+      "hue": 0.9348649211352866,
+      "od280/od315_of_diluted_wines": 0.9999999987844174,
+      "proline": 0.9573088713374203
+    },
+    "total_features": 13,
+    "drifted_count": 6,
+    "report_url": "/reports/drift_report_20261003_034245_800537.html",
+    "report_filename": "drift_report_20261003_034245_800537.html",
+    "reference_samples": 142,
+    "current_samples": 400
+  }
+}
